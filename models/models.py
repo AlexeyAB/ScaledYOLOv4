@@ -448,6 +448,7 @@ class Darknet(nn.Module):
     def __init__(self, cfg, img_size=(416, 416), verbose=False):
         super(Darknet, self).__init__()
 
+        self.traced = False
         self.module_defs = parse_model_cfg(cfg)
         self.module_list, self.routs = create_modules(self.module_defs, img_size, cfg)
         self.yolo_layers = get_yolo_layers(self)
@@ -513,6 +514,8 @@ class Darknet(nn.Module):
                     sh = [list(x.shape)] + [list(out[i].shape) for i in module.layers]  # shapes
                     str = ' >> ' + ' + '.join(['layer %g %s' % x for x in zip(l, sh)])
                 x = module(x, out)  # WeightedFeatureFusion(), FeatureConcat()
+            elif name == 'YOLOLayer' and self.traced:
+                yolo_out.append(x)
             elif name == 'YOLOLayer':
                 yolo_out.append(module(x, out))
             elif name == 'JDELayer':
@@ -527,7 +530,7 @@ class Darknet(nn.Module):
                 print('%g/%g %s -' % (i, len(self.module_list), name), list(x.shape), str)
                 str = ''
 
-        if self.training:  # train
+        if self.training or self.traced:  # train
             return yolo_out
         elif ONNX_EXPORT:  # export
             x = [torch.cat(x, 0) for x in zip(*yolo_out)]

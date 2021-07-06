@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn as nn
 import yaml
 from tqdm import tqdm
 
@@ -25,6 +26,65 @@ def load_classes(path):
     with open(path, 'r') as f:
         names = f.read().split('\n')
     return list(filter(None, names))  # filter removes empty strings (such as last line)
+
+class TracedModel(nn.Module):
+
+    def __init__(self, model=None, device=None, img_size=(640,640)): 
+        super(TracedModel, self).__init__()
+        
+        print(" Convert model to Traced-model... ") 
+        #self.stride = model.stride
+        #self.names = model.names
+        self.model = model
+
+        #self.model = revert_sync_batchnorm(self.model)
+        self.model.to('cpu')
+        self.model.eval()
+
+        self.detect_layer0 = self.model.module_list[-1]
+        self.detect_layer1 = self.model.module_list[-3]
+        self.detect_layer2 = self.model.module_list[-5]
+        self.model.traced = True
+
+        #self.model.module_list[-1] = nn.Identity()
+        #self.model.module_list[-3] = nn.Identity()
+        #self.model.module_list[-5] = nn.Identity()
+        
+        print(self.model)
+
+        rand_example = torch.rand(1, 3, img_size, img_size)
+        
+        traced_script_module = torch.jit.trace(self.model, rand_example, strict=False)
+        #traced_script_module = torch.jit.script(self.model)
+        #traced_script_module.save("traced_model.pt")
+        print(" traced_script_module saved! ")
+        self.model = traced_script_module
+        self.model.to(device)
+        self.detect_layer0.to(device)
+        self.detect_layer1.to(device)
+        self.detect_layer2.to(device)
+
+        print(" model is traced! \n") 
+
+    def forward(self, x, augment=False, profile=False):
+        out_model = self.model(x)
+
+        yolo_out, out = [], []
+
+        yolo_out.append(self.detect_layer0(out_model[0], out))
+        yolo_out.append(self.detect_layer1(out_model[1], out))
+        yolo_out.append(self.detect_layer2(out_model[2], out))
+
+        x, p = zip(*yolo_out)  # inference output, training output
+        x = torch.cat(x, 1)  # cat yolo outputs
+        if augment:  # de-augment results
+            x = torch.split(x, nb, dim=0)
+            x[1][..., :4] /= s[0]  # scale
+            x[1][..., 0] = img_size[1] - x[1][..., 0]  # flip lr
+            x[2][..., :4] /= s[1]  # scale
+            x = torch.cat(x, 1)
+        return x, p
+
 
 
 def test(data,
@@ -70,6 +130,10 @@ def test(data,
         except:
             load_darknet_weights(model, weights[0])
         imgsz = check_img_size(imgsz, s=64)  # check img_size
+
+        #print(model)
+        model = TracedModel(model, device, imgsz)
+
 
     # Half
     half = device.type != 'cpu'  # half precision only supported on CUDA
