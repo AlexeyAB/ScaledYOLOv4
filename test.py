@@ -45,10 +45,6 @@ class TracedModel(nn.Module):
         self.detect_layer1 = self.model.module_list[-3]
         self.detect_layer2 = self.model.module_list[-5]
         self.model.traced = True
-
-        #self.model.module_list[-1] = nn.Identity()
-        #self.model.module_list[-3] = nn.Identity()
-        #self.model.module_list[-5] = nn.Identity()
         
         print(self.model)
 
