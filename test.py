@@ -41,9 +41,9 @@ class TracedModel(nn.Module):
         self.model.to('cpu')
         self.model.eval()
 
-        self.detect_layer0 = self.model.module_list[-1]
+        self.detect_layer0 = self.model.module_list[-5]
         self.detect_layer1 = self.model.module_list[-3]
-        self.detect_layer2 = self.model.module_list[-5]
+        self.detect_layer2 = self.model.module_list[-1]
         self.model.traced = True
         
         print(self.model)
